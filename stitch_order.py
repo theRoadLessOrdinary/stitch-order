@@ -1,0 +1,328 @@
+#!/usr/bin/env python3
+"""Stitch Order.
+
+Sets the order Ink/Stitch sews objects in without moving them in their
+layers and groups. Each object (or group) gets a number, stored on it as
+trlo:stitch_order. Preview and Export build a temporary copy of the
+document with the objects rearranged into that order and hand the copy to
+Ink/Stitch's own simulator or file export. The open document is never
+rearranged.
+
+How the copy is built: every object Ink/Stitch would sew is taken out of
+its group and put, in the new order, inside fresh copies of the groups it
+was in (same transforms, styles and clips), so it sits in exactly the same
+place and looks the same. Objects next to each other in the new order that
+came from the same group share one copy of that group.
+"""
+
+import copy
+import os
+import subprocess
+import tempfile
+
+import inkex
+from lxml import etree
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+INKSTITCH = os.path.join(HERE, '..', 'inkstitch', 'bin', 'inkstitch')
+
+# Same namespace as Expanded Groups.
+inkex.NSS['trlo'] = 'http://theroadlessordinary.com/namespace'
+etree.register_namespace('trlo', inkex.NSS['trlo'])
+inkex.NSS.setdefault('inkstitch', 'http://inkstitch.org/namespace')
+ORDER_ATTR = inkex.addNS('stitch_order', 'trlo')
+
+SVG = inkex.NSS['svg']
+EMBROIDERABLE = {f'{{{SVG}}}{t}' for t in
+                 ('path', 'line', 'polyline', 'polygon', 'rect', 'ellipse', 'circle')}
+USE_TAG = f'{{{SVG}}}use'
+CONTAINERS = {f'{{{SVG}}}{t}' for t in ('g', 'a', 'switch', 'svg')}
+SKIPPED = {f'{{{SVG}}}{t}' for t in ('defs', 'mask', 'clipPath', 'metadata')}
+HREF = inkex.addNS('href', 'xlink')
+CONN_START = inkex.addNS('connection-start', 'inkscape')
+CONN_END = inkex.addNS('connection-end', 'inkscape')
+GROUPMODE = inkex.addNS('groupmode', 'inkscape')
+LABEL = inkex.addNS('label', 'inkscape')
+
+UNTAGGED_CHOICES = ('after', 'before', 'omit')
+
+
+# -- order tags ---------------------------------------------------------------
+
+def doc_index(root):
+    return {node: i for i, node in enumerate(root.iter())}
+
+
+def tagged_in_order(root):
+    """Tagged elements, by number, ties broken by document order."""
+    index = doc_index(root)
+    tagged = []
+    for node in root.iter():
+        value = node.get(ORDER_ATTR) if isinstance(node.tag, str) else None
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except ValueError:
+            continue
+        tagged.append((number, index[node], node))
+    return [node for _, _, node in sorted(tagged, key=lambda t: (t[0], t[1]))]
+
+
+def write_order(nodes):
+    for number, node in enumerate(nodes, start=1):
+        node.set(ORDER_ATTR, str(number))
+
+
+def describe(node):
+    label = node.get(LABEL)
+    name = f'{label} ({node.get_id()})' if label else node.get_id()
+    if node.tag in CONTAINERS:
+        count = sum(1 for n in node.iter() if n.tag in EMBROIDERABLE or n.tag == USE_TAG)
+        kind = 'layer' if node.get(GROUPMODE) == 'layer' else 'group'
+        name += f', {kind} of {count}'
+    return name
+
+
+# -- what gets moved -----------------------------------------------------------
+
+def is_symbol_use(node):
+    return node.tag == USE_TAG and (node.get(HREF) or '').startswith('#inkstitch_')
+
+
+def sewn_objects(root):
+    """Every object Ink/Stitch might sew, in document order: drawn shapes and
+    clones outside defs, masks and clip paths, but not Ink/Stitch command
+    symbols or their connectors. Whether each one is actually sewn (hidden,
+    ignored) is left to Ink/Stitch: the copy keeps everything it reads."""
+    found = []
+
+    def walk(node):
+        if not isinstance(node.tag, str) or node.tag in SKIPPED:
+            return
+        if node.get(CONN_START) is not None or node.get(CONN_END) is not None:
+            return
+        if node.tag in EMBROIDERABLE or (node.tag == USE_TAG and not is_symbol_use(node)):
+            found.append(node)
+        elif node.tag in CONTAINERS:
+            for child in node:
+                walk(child)
+
+    for child in root:
+        walk(child)
+    return found
+
+
+# -- the rearranged copy -------------------------------------------------------
+
+def effective_number(node, root):
+    """The object's own number, or the nearest numbered group above it."""
+    while node is not None and node is not root:
+        value = node.get(ORDER_ATTR)
+        if value is not None:
+            try:
+                return float(value)
+            except ValueError:
+                pass
+        node = node.getparent()
+    return None
+
+
+def ordered_copy(document, untagged):
+    """A copy of the document rearranged into stitch order, plus how many
+    objects it sews."""
+    doc = copy.deepcopy(document)
+    root = doc.getroot()
+    objects = sewn_objects(root)
+
+    numbered, loose = [], []
+    for i, node in enumerate(objects):
+        number = effective_number(node, root)
+        (loose if number is None else numbered).append((number, i, node))
+    numbered.sort(key=lambda t: (t[0], t[1]))
+    numbered = [node for _, _, node in numbered]
+    loose = [node for _, _, node in loose]
+
+    if untagged == 'before':
+        order = loose + numbered
+    elif untagged == 'omit':
+        for node in loose:
+            node.getparent().remove(node)
+        order = numbered
+    else:
+        order = numbered + loose
+
+    # Ancestor chains are read before anything moves.
+    chains = {}
+    for node in order:
+        chain = [a for a in node.iterancestors() if a is not root]
+        chains[node] = list(reversed(chain))
+
+    used_ids = {n.get('id') for n in root.iter() if isinstance(n.tag, str)}
+    counter = [0]
+
+    def unique(base):
+        while True:
+            counter[0] += 1
+            new_id = f'{base}-so{counter[0]}'
+            if new_id not in used_ids:
+                used_ids.add(new_id)
+                return new_id
+
+    def wrapper_for(orig):
+        w = root.makeelement(orig.tag, {k: v for k, v in orig.attrib.items()
+                                        if k not in ('id', ORDER_ATTR)})
+        new_id = unique(orig.get('id') or 'g')
+        w.set('id', new_id)
+        # An "ignore layer" command must sit inside the layer it ignores.
+        if orig.get(GROUPMODE) == 'layer':
+            for cmd in orig.iter(USE_TAG):
+                if (cmd.get(HREF) or '') == '#inkstitch_ignore_layer':
+                    dup = copy.deepcopy(cmd)
+                    dup.set('id', unique(dup.get('id') or 'use'))
+                    w.append(dup)
+        return w
+
+    stack = []  # (original ancestor, its copy), outermost first
+    for node in order:
+        chain = chains[node]
+        keep = 0
+        while keep < len(stack) and keep < len(chain) and stack[keep][0] is chain[keep]:
+            keep += 1
+        del stack[keep:]
+        parent = stack[-1][1] if stack else root
+        for orig in chain[keep:]:
+            w = wrapper_for(orig)
+            parent.append(w)
+            stack.append((orig, w))
+            parent = w
+        parent.append(node)
+
+    return doc, len(order)
+
+
+def spawn_detached(argv):
+    """Start argv fully detached (double fork), so Inkscape does not wait for
+    it and this script leaves no child process behind."""
+    pid = os.fork()
+    if pid == 0:
+        try:
+            os.setsid()
+            if os.fork() == 0:
+                devnull = os.open(os.devnull, os.O_RDWR)
+                for fd in (0, 1, 2):
+                    os.dup2(devnull, fd)
+                os.execv(argv[0], argv)
+        finally:
+            os._exit(0)
+    os.waitpid(pid, 0)
+
+
+# -- the extension -------------------------------------------------------------
+
+class StitchOrder(inkex.EffectExtension):
+
+    def add_arguments(self, pars):
+        pars.add_argument('--action', default='list')
+        pars.add_argument('--position', type=int, default=1)
+        pars.add_argument('--untagged', default='after')
+        pars.add_argument('--format', default='dst')
+        pars.add_argument('--output_path', default='')
+
+    def selected(self):
+        nodes = [n for n in self.svg.selection.values() if n is not self.svg]
+        if not nodes:
+            raise inkex.AbortExtension('Select the objects or groups first.')
+        return nodes
+
+    def effect(self):
+        action = self.options.action
+        root = self.document.getroot()
+        if action == 'add':
+            sel = self.selected()
+            write_order([n for n in tagged_in_order(root) if n not in sel] + sel)
+        elif action == 'insert':
+            sel = self.selected()
+            rest = [n for n in tagged_in_order(root) if n not in sel]
+            at = max(0, min(self.options.position - 1, len(rest)))
+            write_order(rest[:at] + sel + rest[at:])
+        elif action == 'remove':
+            sel = self.selected()
+            for node in sel:
+                node.attrib.pop(ORDER_ATTR, None)
+            write_order(tagged_in_order(root))
+        elif action == 'clear':
+            for node in tagged_in_order(root):
+                node.attrib.pop(ORDER_ATTR, None)
+        elif action == 'list':
+            self.list_order(root)
+        elif action == 'preview':
+            self.preview()
+        elif action == 'export':
+            self.export()
+        else:
+            raise inkex.AbortExtension(f'Unknown action: {action}')
+
+    def list_order(self, root):
+        nodes = tagged_in_order(root)
+        if not nodes:
+            self.msg('No objects have a stitch order yet.')
+            return
+        lines = [f'{n.get(ORDER_ATTR)}. {describe(n)}' for n in nodes]
+        self.msg('Stitch order (objects without a number sew after these):\n\n'
+                 + '\n'.join(lines))
+
+    def build(self):
+        untagged = self.options.untagged
+        if untagged not in UNTAGGED_CHOICES:
+            untagged = 'after'
+        doc, count = ordered_copy(self.document, untagged)
+        if count == 0:
+            raise inkex.AbortExtension('Nothing in this document would be sewn.')
+        return doc
+
+    def preview(self):
+        path = os.path.join(tempfile.gettempdir(), 'stitch_order_preview.svg')
+        self.build().write(path)
+        if not os.path.exists(INKSTITCH):
+            raise inkex.AbortExtension(f'Ink/Stitch was not found at {os.path.normpath(INKSTITCH)}')
+        spawn_detached([INKSTITCH, '--extension=simulator', path])
+
+    def output_path(self):
+        fmt = self.options.format.lower()
+        path = (self.options.output_path or '').strip()
+        if not path:
+            doc_path = self.document_path()
+            if not doc_path:
+                raise inkex.AbortExtension(
+                    'Save the SVG first, or choose where to save the embroidery file.')
+            path = os.path.splitext(doc_path)[0] + '.' + fmt
+        elif os.path.isdir(path):
+            doc_path = self.document_path() or 'embroidery.svg'
+            name = os.path.splitext(os.path.basename(doc_path))[0]
+            path = os.path.join(path, f'{name}.{fmt}')
+        elif not path.lower().endswith('.' + fmt):
+            path += '.' + fmt
+        return path
+
+    def export(self):
+        fmt = self.options.format.lower()
+        out = self.output_path()
+        src = os.path.join(tempfile.gettempdir(), 'stitch_order_export.svg')
+        self.build().write(src)
+        try:
+            result = subprocess.run([INKSTITCH, '--extension=output', f'--format={fmt}', src],
+                                    capture_output=True, timeout=1800)
+        except FileNotFoundError:
+            raise inkex.AbortExtension(f'Ink/Stitch was not found at {os.path.normpath(INKSTITCH)}')
+        if result.returncode != 0 or not result.stdout:
+            detail = result.stderr.decode('utf-8', 'replace').strip().splitlines()
+            raise inkex.AbortExtension('Ink/Stitch did not write the file.'
+                                       + (f'\n\n{detail[-1]}' if detail else ''))
+        with open(out, 'wb') as f:
+            f.write(result.stdout)
+        self.msg(f'Saved {out}')
+
+
+if __name__ == '__main__':
+    StitchOrder().run()

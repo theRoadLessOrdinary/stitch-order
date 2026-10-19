@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+
+	<name>Export in Stitch Order</name>
+	<id>maps_edge.stitch_order_export</id>
+
+	<param name="action" type="string" gui-hidden="true">export</param>
+	<param name="format" type="optiongroup" appearance="combo" gui-text="File format">
+		<option value="dst">DST (Tajima)</option>
+		<option value="exp">EXP (Melco)</option>
+		<option value="jef">JEF (Janome)</option>
+		<option value="pes">PES (Brother)</option>
+		<option value="pec">PEC (Brother)</option>
+		<option value="vp3">VP3 (Pfaff)</option>
+		<option value="xxx">XXX (Singer)</option>
+		<option value="u01">U01 (Barudan)</option>
+		<option value="tbf">TBF (Tajima)</option>
+		<option value="qcc">QCC</option>
+		<option value="pmv">PMV</option>
+		<option value="plt">PLT</option>
+		<option value="inf">INF</option>
+		<option value="edr">EDR</option>
+		<option value="col">COL</option>
+		<option value="csv">CSV</option>
+		<option value="json">JSON</option>
+		<option value="txt">TXT</option>
+		<option value="gcode">G-code</option>
+	</param>
+	<param name="output_path" type="path" mode="file_new" gui-text="Save as (empty: next to the SVG, same name)"></param>
+	<param name="untagged" type="optiongroup" appearance="combo" gui-text="Objects without a number">
+		<option value="after">Sew after the numbered ones</option>
+		<option value="before">Sew before the numbered ones</option>
+		<option value="omit">Leave out</option>
+	</param>
+	<label>Saves an embroidery file sewn in stitch order, made by Ink/Stitch from a copy of the document arranged in that order. The document itself is not changed. An existing file with the same name is replaced.</label>
+	<label>Numbering a group numbers everything inside it; a number on an object inside the group overrides it.</label>
+
+	<effect needs-live-preview="false">
+		<object-type>all</object-type>
+		<effects-menu>
+			<submenu name="Map's Edge Tools" translatable="no">
+				<submenu name="Embroidery" translatable="no">
+					<submenu name="Stitch Order" translatable="no" />
+				</submenu>
+			</submenu>
+		</effects-menu>
+	</effect>
+
+	<script>
+		<command location="inx" interpreter="python">stitch_order.py</command>
+	</script>
+
+</inkscape-extension>

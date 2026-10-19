@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+
+	<name>Insert into Stitch Order</name>
+	<id>maps_edge.stitch_order_insert</id>
+
+	<param name="action" type="string" gui-hidden="true">insert</param>
+	<param name="position" type="int" min="1" max="9999" gui-text="Position">1</param>
+	<label>Puts the selected objects or groups into the stitch order at this position, in the order you selected them. Numbers after them move up.</label>
+	<label>Numbering a group numbers everything inside it; a number on an object inside the group overrides it.</label>
+
+	<effect needs-live-preview="false">
+		<object-type>all</object-type>
+		<effects-menu>
+			<submenu name="Map's Edge Tools" translatable="no">
+				<submenu name="Embroidery" translatable="no">
+					<submenu name="Stitch Order" translatable="no" />
+				</submenu>
+			</submenu>
+		</effects-menu>
+	</effect>
+
+	<script>
+		<command location="inx" interpreter="python">stitch_order.py</command>
+	</script>
+
+</inkscape-extension>
