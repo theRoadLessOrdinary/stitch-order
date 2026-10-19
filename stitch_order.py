@@ -16,9 +16,11 @@ came from the same group share one copy of that group.
 """
 
 import copy
+import json
 import os
 import subprocess
 import tempfile
+import time
 
 import inkex
 from lxml import etree
@@ -31,6 +33,10 @@ inkex.NSS['trlo'] = 'http://theroadlessordinary.com/namespace'
 etree.register_namespace('trlo', inkex.NSS['trlo'])
 inkex.NSS.setdefault('inkstitch', 'http://inkstitch.org/namespace')
 ORDER_ATTR = inkex.addNS('stitch_order', 'trlo')
+
+# After every change the full order (object ids) is written here, so an open
+# Expanded Groups window can update its Stitch Order entry.
+ORDER_RECORD_PATH = os.path.join(tempfile.gettempdir(), 'stitch_order_last.json')
 
 SVG = inkex.NSS['svg']
 EMBROIDERABLE = {f'{{{SVG}}}{t}' for t in
@@ -262,6 +268,17 @@ class StitchOrder(inkex.EffectExtension):
             self.export()
         else:
             raise inkex.AbortExtension(f'Unknown action: {action}')
+        if action in ('add', 'insert', 'remove', 'clear'):
+            self.record_order(root)
+
+    @staticmethod
+    def record_order(root):
+        ids = [n.get_id() for n in tagged_in_order(root)]
+        try:
+            with open(ORDER_RECORD_PATH, 'w') as f:
+                json.dump({'ids': ids, 'time': time.time()}, f)
+        except OSError:
+            pass
 
     def list_order(self, root):
         nodes = tagged_in_order(root)
