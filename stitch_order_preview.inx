@@ -5,12 +5,7 @@
 	<id>maps_edge.stitch_order_preview</id>
 
 	<param name="action" type="string" gui-hidden="true">preview</param>
-	<param name="untagged" type="optiongroup" appearance="combo" gui-text="Objects without a number">
-		<option value="after">Sew after the numbered ones</option>
-		<option value="before">Sew before the numbered ones</option>
-		<option value="omit">Leave out</option>
-	</param>
-	<label>Opens the Ink/Stitch simulator on a copy of the document arranged in stitch order. The document itself is not changed.</label>
+	<label>Opens the Ink/Stitch simulator on a copy of the document arranged in stitch order. Objects without a number are left out. The document itself is not changed.</label>
 	<label>Numbering a group numbers everything inside it; a number on an object inside the group overrides it.</label>
 
 	<effect needs-live-preview="false">

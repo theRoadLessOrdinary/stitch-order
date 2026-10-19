@@ -14,11 +14,11 @@ Extensions > Map's Edge Tools > Embroidery > Stitch Order
 - **Clear Stitch Order**: takes the number off every object.
 - **List Stitch Order**: shows the numbered objects in order.
 - **Preview in Stitch Order**: opens the Ink/Stitch simulator, sewing in the numbered order.
-- **Export in Stitch Order**: saves an embroidery file (DST, PES, JEF and the other Ink/Stitch formats) sewn in the numbered order. If you leave the file name empty, the file goes next to the SVG with the same name.
+- **Export in Stitch Order**: saves an embroidery file (DST, PES, JEF and the other Ink/Stitch formats) sewn in the numbered order, or an SVG of the document rearranged in that order. If you leave the file name empty, the file goes next to the SVG with the same name; an SVG gets " - stitch order" added to the name, so it never replaces your document.
 
 If you number a group, everything inside it gets that number and sews in its usual order within the group. A number on an object inside the group overrides the group's number.
 
-For Preview and Export, you choose what happens to objects without a number: sew them after the numbered ones, sew them before, or leave them out.
+Preview and Export sew only the numbered objects. Objects without a number are left out.
 
 ## How it works
 

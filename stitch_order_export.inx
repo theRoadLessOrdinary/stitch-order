@@ -25,14 +25,10 @@
 		<option value="json">JSON</option>
 		<option value="txt">TXT</option>
 		<option value="gcode">G-code</option>
+		<option value="svg">SVG (this document, rearranged in stitch order)</option>
 	</param>
-	<param name="output_path" type="path" mode="file_new" gui-text="Save as (empty: next to the SVG, same name)"></param>
-	<param name="untagged" type="optiongroup" appearance="combo" gui-text="Objects without a number">
-		<option value="after">Sew after the numbered ones</option>
-		<option value="before">Sew before the numbered ones</option>
-		<option value="omit">Leave out</option>
-	</param>
-	<label>Saves an embroidery file sewn in stitch order, made by Ink/Stitch from a copy of the document arranged in that order. The document itself is not changed. An existing file with the same name is replaced.</label>
+	<param name="output_path" type="path" mode="file_new" gui-text="Save as (empty: next to the SVG, same name; for SVG, name + &quot; - stitch order&quot;)"></param>
+	<label>Saves an embroidery file sewn in stitch order, made by Ink/Stitch from a copy of the document arranged in that order. Objects without a number are left out. The document itself is not changed. An existing file with the same name is replaced.</label>
 	<label>Numbering a group numbers everything inside it; a number on an object inside the group overrides it.</label>
 
 	<effect needs-live-preview="false">

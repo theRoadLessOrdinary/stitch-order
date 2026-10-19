@@ -33,6 +33,7 @@ inkex.NSS['trlo'] = 'http://theroadlessordinary.com/namespace'
 etree.register_namespace('trlo', inkex.NSS['trlo'])
 inkex.NSS.setdefault('inkstitch', 'http://inkstitch.org/namespace')
 ORDER_ATTR = inkex.addNS('stitch_order', 'trlo')
+SVG_SUFFIX = ' - stitch order'
 
 # After every change the full order (object ids) is written here, so an open
 # Expanded Groups window can update its Stitch Order entry.
@@ -49,8 +50,6 @@ CONN_START = inkex.addNS('connection-start', 'inkscape')
 CONN_END = inkex.addNS('connection-end', 'inkscape')
 GROUPMODE = inkex.addNS('groupmode', 'inkscape')
 LABEL = inkex.addNS('label', 'inkscape')
-
-UNTAGGED_CHOICES = ('after', 'before', 'omit')
 
 
 # -- order tags ---------------------------------------------------------------
@@ -134,9 +133,9 @@ def effective_number(node, root):
     return None
 
 
-def ordered_copy(document, untagged):
+def ordered_copy(document):
     """A copy of the document rearranged into stitch order, plus how many
-    objects it sews."""
+    objects it sews. Objects without a number are left out."""
     doc = copy.deepcopy(document)
     root = doc.getroot()
     objects = sewn_objects(root)
@@ -149,14 +148,9 @@ def ordered_copy(document, untagged):
     numbered = [node for _, _, node in numbered]
     loose = [node for _, _, node in loose]
 
-    if untagged == 'before':
-        order = loose + numbered
-    elif untagged == 'omit':
-        for node in loose:
-            node.getparent().remove(node)
-        order = numbered
-    else:
-        order = numbered + loose
+    for node in loose:
+        node.getparent().remove(node)
+    order = numbered
 
     # Ancestor chains are read before anything moves.
     chains = {}
@@ -231,7 +225,6 @@ class StitchOrder(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument('--action', default='list')
         pars.add_argument('--position', type=int, default=1)
-        pars.add_argument('--untagged', default='after')
         pars.add_argument('--format', default='dst')
         pars.add_argument('--output_path', default='')
 
@@ -286,16 +279,13 @@ class StitchOrder(inkex.EffectExtension):
             self.msg('No objects have a stitch order yet.')
             return
         lines = [f'{n.get(ORDER_ATTR)}. {describe(n)}' for n in nodes]
-        self.msg('Stitch order (objects without a number sew after these):\n\n'
+        self.msg('Stitch order (objects without a number are not sewn):\n\n'
                  + '\n'.join(lines))
 
     def build(self):
-        untagged = self.options.untagged
-        if untagged not in UNTAGGED_CHOICES:
-            untagged = 'after'
-        doc, count = ordered_copy(self.document, untagged)
+        doc, count = ordered_copy(self.document)
         if count == 0:
-            raise inkex.AbortExtension('Nothing in this document would be sewn.')
+            raise inkex.AbortExtension('Nothing is numbered in the stitch order, so nothing would be sewn.')
         return doc
 
     def preview(self):
@@ -308,23 +298,32 @@ class StitchOrder(inkex.EffectExtension):
     def output_path(self):
         fmt = self.options.format.lower()
         path = (self.options.output_path or '').strip()
+        # An SVG gets its own name so it never replaces the document itself.
+        suffix = SVG_SUFFIX if fmt == 'svg' else ''
         if not path:
             doc_path = self.document_path()
             if not doc_path:
                 raise inkex.AbortExtension(
-                    'Save the SVG first, or choose where to save the embroidery file.')
-            path = os.path.splitext(doc_path)[0] + '.' + fmt
+                    'Save the SVG first, or choose where to save the file.')
+            path = os.path.splitext(doc_path)[0] + suffix + '.' + fmt
         elif os.path.isdir(path):
             doc_path = self.document_path() or 'embroidery.svg'
             name = os.path.splitext(os.path.basename(doc_path))[0]
-            path = os.path.join(path, f'{name}.{fmt}')
+            path = os.path.join(path, f'{name}{suffix}.{fmt}')
         elif not path.lower().endswith('.' + fmt):
             path += '.' + fmt
+        doc_path = self.document_path()
+        if doc_path and os.path.abspath(path) == os.path.abspath(doc_path):
+            raise inkex.AbortExtension('That would replace the document itself. Choose another name.')
         return path
 
     def export(self):
         fmt = self.options.format.lower()
         out = self.output_path()
+        if fmt == 'svg':
+            self.build().write(out)
+            self.msg(f'Saved {out}')
+            return
         src = os.path.join(tempfile.gettempdir(), 'stitch_order_export.svg')
         self.build().write(src)
         try:
