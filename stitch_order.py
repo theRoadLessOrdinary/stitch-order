@@ -44,6 +44,8 @@ EMBROIDERABLE = {f'{{{SVG}}}{t}' for t in
                  ('path', 'line', 'polyline', 'polygon', 'rect', 'ellipse', 'circle')}
 USE_TAG = f'{{{SVG}}}use'
 CONTAINERS = {f'{{{SVG}}}{t}' for t in ('g', 'a', 'switch', 'svg')}
+KEEP_TAGS = {f'{{{SVG}}}{t}' for t in ('defs', 'metadata', 'style', 'title', 'desc')} | {
+    inkex.addNS('namedview', 'sodipodi')}
 SKIPPED = {f'{{{SVG}}}{t}' for t in ('defs', 'mask', 'clipPath', 'metadata')}
 HREF = inkex.addNS('href', 'xlink')
 CONN_START = inkex.addNS('connection-start', 'inkscape')
@@ -133,9 +135,12 @@ def effective_number(node, root):
     return None
 
 
-def ordered_copy(document):
+def ordered_copy(document, only_ordered=False):
     """A copy of the document rearranged into stitch order, plus how many
-    objects it sews. Objects without a number are left out."""
+    objects it sews. Objects without a number are left out. With
+    only_ordered, nothing else is kept either: no other layers or groups,
+    no Ink/Stitch stitch plan or command symbols; only the numbered objects
+    in copies of their groups, plus the document's defs and settings."""
     doc = copy.deepcopy(document)
     root = doc.getroot()
     objects = sewn_objects(root)
@@ -183,6 +188,7 @@ def ordered_copy(document):
                     w.append(dup)
         return w
 
+    first_new = len(root)   # everything appended after this is the new order
     stack = []  # (original ancestor, its copy), outermost first
     for node in order:
         chain = chains[node]
@@ -197,6 +203,11 @@ def ordered_copy(document):
             stack.append((orig, w))
             parent = w
         parent.append(node)
+
+    if only_ordered:
+        for child in list(root)[:first_new]:
+            if not isinstance(child.tag, str) or child.tag not in KEEP_TAGS:
+                root.remove(child)
 
     return doc, len(order)
 
@@ -282,8 +293,8 @@ class StitchOrder(inkex.EffectExtension):
         self.msg('Stitch order (objects without a number are not sewn):\n\n'
                  + '\n'.join(lines))
 
-    def build(self):
-        doc, count = ordered_copy(self.document)
+    def build(self, only_ordered=False):
+        doc, count = ordered_copy(self.document, only_ordered)
         if count == 0:
             raise inkex.AbortExtension('Nothing is numbered in the stitch order, so nothing would be sewn.')
         return doc
@@ -321,8 +332,8 @@ class StitchOrder(inkex.EffectExtension):
         fmt = self.options.format.lower()
         out = self.output_path()
         if fmt == 'svg':
-            self.build().write(out)
-            self.msg(f'Saved {out}')
+            # Replaces an earlier export of the same name without asking.
+            self.build(only_ordered=True).write(out)
             return
         src = os.path.join(tempfile.gettempdir(), 'stitch_order_export.svg')
         self.build().write(src)
