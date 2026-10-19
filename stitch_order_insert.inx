@@ -5,8 +5,13 @@
 	<id>maps_edge.stitch_order_insert</id>
 
 	<param name="action" type="string" gui-hidden="true">insert</param>
-	<param name="position" type="int" min="1" max="9999" gui-text="Position">1</param>
-	<label>Puts the selected objects or groups into the stitch order at this position, in the order you selected them. Numbers after them move up.</label>
+	<param name="place" type="optiongroup" appearance="radio" gui-text="Where">
+		<option value="start">Beginning</option>
+		<option value="end">End</option>
+		<option value="position">Position</option>
+	</param>
+	<param name="position" type="int" min="1" max="9999" gui-text="Position number (for Position)">1</param>
+	<label>Puts the selected objects or groups into the stitch order at the beginning, at the end, or at the position number, in the order you selected them. Numbers after them move up.</label>
 	<label>Numbering a group numbers everything inside it; a number on an object inside the group overrides it.</label>
 
 	<effect needs-live-preview="false">

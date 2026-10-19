@@ -235,6 +235,7 @@ class StitchOrder(inkex.EffectExtension):
 
     def add_arguments(self, pars):
         pars.add_argument('--action', default='list')
+        pars.add_argument('--place', default='position')
         pars.add_argument('--position', type=int, default=1)
         pars.add_argument('--format', default='dst')
         pars.add_argument('--output_path', default='')
@@ -254,7 +255,12 @@ class StitchOrder(inkex.EffectExtension):
         elif action == 'insert':
             sel = self.selected()
             rest = [n for n in tagged_in_order(root) if n not in sel]
-            at = max(0, min(self.options.position - 1, len(rest)))
+            if self.options.place == 'start':
+                at = 0
+            elif self.options.place == 'end':
+                at = len(rest)
+            else:
+                at = max(0, min(self.options.position - 1, len(rest)))
             write_order(rest[:at] + sel + rest[at:])
         elif action == 'remove':
             sel = self.selected()

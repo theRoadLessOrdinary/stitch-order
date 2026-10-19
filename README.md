@@ -9,7 +9,7 @@ Ink/Stitch sews objects in the order they appear in the document. Normally, chan
 Extensions > Map's Edge Tools > Embroidery > Stitch Order
 
 - **Add to Stitch Order**: select objects or groups in the order they should sew, then run this. They get the next numbers. An object that already has a number moves to the end.
-- **Insert into Stitch Order**: puts the selected objects at the position you give. The numbers after them move up.
+- **Insert into Stitch Order**: puts the selected objects at the beginning, at the end, or at the position number you give. The numbers after them move up.
 - **Remove from Stitch Order**: takes the number off the selected objects.
 - **Clear Stitch Order**: takes the number off every object.
 - **List Stitch Order**: shows the numbered objects in order.
