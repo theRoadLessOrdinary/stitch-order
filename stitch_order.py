@@ -311,10 +311,12 @@ class StitchOrder(inkex.EffectExtension):
 
     @staticmethod
     def record_order(root):
-        ids = [n.get_id() for n in tagged_in_order(root)]
+        nodes = tagged_in_order(root)
+        ids = [n.get_id() for n in nodes]
+        labels = {n.get_id(): n.get(LABEL) for n in nodes if n.get(LABEL)}
         try:
             with open(ORDER_RECORD_PATH, 'w') as f:
-                json.dump({'ids': ids, 'time': time.time()}, f)
+                json.dump({'ids': ids, 'labels': labels, 'time': time.time()}, f)
         except OSError:
             pass
 
