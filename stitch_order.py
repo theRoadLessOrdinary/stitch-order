@@ -21,6 +21,7 @@ import os
 import subprocess
 import tempfile
 import time
+import warnings
 
 import inkex
 from lxml import etree
@@ -38,6 +39,12 @@ SVG_SUFFIX = ' - stitch order'
 # After every change the full order (object ids) is written here, so an open
 # Expanded Groups window can update its Stitch Order entry.
 ORDER_RECORD_PATH = os.path.join(tempfile.gettempdir(), 'stitch_order_last.json')
+
+# Expanded Groups writes a new order here (object ids, after a drag) just
+# before running the hidden Reorder action. Ignored when older than
+# PENDING_MAX_AGE seconds, so a run that never happened can't apply later.
+ORDER_PENDING_PATH = os.path.join(tempfile.gettempdir(), 'stitch_order_pending.json')
+PENDING_MAX_AGE = 30
 
 SVG = inkex.NSS['svg']
 EMBROIDERABLE = {f'{{{SVG}}}{t}' for t in
@@ -215,14 +222,17 @@ def ordered_copy(document, only_ordered=False):
 def spawn_detached(argv):
     """Start argv fully detached (double fork), so Inkscape does not wait for
     it and this script leaves no child process behind."""
+    # Python warns about fork() in a multi-threaded process; Inkscape would
+    # show that warning in a dialog in front of the simulator.
+    warnings.simplefilter('ignore')
     pid = os.fork()
     if pid == 0:
         try:
             os.setsid()
+            devnull = os.open(os.devnull, os.O_RDWR)
+            for fd in (0, 1, 2):
+                os.dup2(devnull, fd)
             if os.fork() == 0:
-                devnull = os.open(os.devnull, os.O_RDWR)
-                for fd in (0, 1, 2):
-                    os.dup2(devnull, fd)
                 os.execv(argv[0], argv)
         finally:
             os._exit(0)
@@ -270,6 +280,8 @@ class StitchOrder(inkex.EffectExtension):
         elif action == 'clear':
             for node in tagged_in_order(root):
                 node.attrib.pop(ORDER_ATTR, None)
+        elif action == 'reorder':
+            self.reorder(root)
         elif action == 'list':
             self.list_order(root)
         elif action == 'preview':
@@ -278,8 +290,24 @@ class StitchOrder(inkex.EffectExtension):
             self.export()
         else:
             raise inkex.AbortExtension(f'Unknown action: {action}')
-        if action in ('add', 'insert', 'remove', 'clear'):
+        if action in ('add', 'insert', 'remove', 'clear', 'reorder'):
             self.record_order(root)
+
+    def reorder(self, root):
+        """Renumber in the order Expanded Groups left in ORDER_PENDING_PATH.
+        Numbered objects missing from that list keep their order, after it."""
+        try:
+            with open(ORDER_PENDING_PATH) as f:
+                rec = json.load(f)
+            os.remove(ORDER_PENDING_PATH)
+        except (OSError, ValueError):
+            raise inkex.AbortExtension('No new stitch order was given.')
+        if time.time() - rec.get('time', 0) > PENDING_MAX_AGE:
+            raise inkex.AbortExtension('The new stitch order arrived too late; drag again.')
+        current = tagged_in_order(root)
+        by_id = {n.get_id(): n for n in current}
+        first = [by_id[i] for i in rec.get('ids', []) if i in by_id]
+        write_order(first + [n for n in current if n not in first])
 
     @staticmethod
     def record_order(root):

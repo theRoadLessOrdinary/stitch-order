@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+
+	<name>Reorder Stitch Order</name>
+	<id>maps_edge.stitch_order_reorder</id>
+
+	<param name="action" type="string" gui-hidden="true">reorder</param>
+
+	<effect needs-live-preview="false">
+		<object-type>all</object-type>
+		<effects-menu hidden="true" />
+	</effect>
+
+	<script>
+		<command location="inx" interpreter="python">stitch_order.py</command>
+	</script>
+
+</inkscape-extension>
