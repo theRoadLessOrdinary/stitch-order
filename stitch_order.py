@@ -249,18 +249,24 @@ class StitchOrder(inkex.EffectExtension):
         pars.add_argument('--position', type=int, default=1)
         pars.add_argument('--format', default='dst')
         pars.add_argument('--output_path', default='')
+        pars.add_argument('--sel_order', default='document')
 
-    def selected(self):
+    def selected(self, click_order=False):
         nodes = [n for n in self.svg.selection.values() if n is not self.svg]
         if not nodes:
             raise inkex.AbortExtension('Select the objects or groups first.')
+        if click_order:
+            return nodes  # the order Inkscape passed them: click order
+        # Document order, not click order.
+        index = doc_index(self.document.getroot())
+        nodes.sort(key=lambda n: index.get(n, len(index)))
         return nodes
 
     def effect(self):
         action = self.options.action
         root = self.document.getroot()
         if action == 'add':
-            sel = self.selected()
+            sel = self.selected(click_order=self.options.sel_order == 'click')
             write_order([n for n in tagged_in_order(root) if n not in sel] + sel)
         elif action == 'insert':
             sel = self.selected()

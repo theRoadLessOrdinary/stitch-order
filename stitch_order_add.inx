@@ -5,6 +5,10 @@
 	<id>maps_edge.stitch_order_add</id>
 
 	<param name="action" type="string" gui-hidden="true">add</param>
+	<param name="sel_order" type="optiongroup" appearance="combo" gui-text="Selection order">
+		<option value="document">Document order</option>
+		<option value="click">Click order</option>
+	</param>
 
 	<effect needs-live-preview="false">
 		<object-type>all</object-type>
