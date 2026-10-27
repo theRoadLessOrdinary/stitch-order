@@ -9,6 +9,12 @@
 		<option value="side">Beside the canvas</option>
 		<option value="over">On top of the design</option>
 	</param>
+	<param name="render_mode" type="optiongroup" appearance="combo" gui-text="Render mode">
+		<option value="realistic-600">Realistic View (High Quality)</option>
+		<option value="realistic-300">Realistic View</option>
+		<option value="simple">Stitch Plan</option>
+		<option value="realistic-vector">Realistic Vector (slow)</option>
+	</param>
 	<label>Draws Ink/Stitch's stitch plan, sewn in stitch order, as a layer in this document. Objects without a number are left out. Replaces an earlier stitch plan; Ink/Stitch's Undo Stitch Plan Preview removes it.</label>
 	<label>Numbering a group numbers everything inside it; a number on an object inside the group overrides it.</label>
 

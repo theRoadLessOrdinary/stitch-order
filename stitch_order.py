@@ -66,6 +66,7 @@ LABEL = inkex.addNS('label', 'inkscape')
 
 # Ink/Stitch's stitch plan layer and the attributes it keeps on it.
 PLAN_ID = '__inkstitch_stitch_plan__'
+RENDER_MODES = ('simple', 'realistic-300', 'realistic-600', 'realistic-vector')
 PLAN_VISIBILITY = inkex.addNS('layer_visibility', 'inkstitch')
 PLAN_INVISIBLE = inkex.addNS('invisible_layers', 'inkstitch')
 URL_REF = re.compile(r'url\(#([^)]+)\)')
@@ -282,6 +283,7 @@ class StitchOrder(inkex.EffectExtension):
         pars.add_argument('--output_path', default='')
         pars.add_argument('--sel_order', default='document')
         pars.add_argument('--plan_place', default='side')
+        pars.add_argument('--render_mode', default='realistic-600')
 
     def selected(self, click_order=False):
         nodes = [n for n in self.svg.selection.values() if n is not self.svg]
@@ -431,9 +433,12 @@ class StitchOrder(inkex.EffectExtension):
         stitch plan layer is put into this document."""
         src = os.path.join(tempfile.gettempdir(), 'stitch_order_plan.svg')
         self.build().write(src)
-        # Ink/Stitch's own defaults, except where the plan goes.
+        # Ink/Stitch's own defaults, except where the plan goes and the render mode.
+        mode = self.options.render_mode
+        if mode not in RENDER_MODES:
+            raise inkex.AbortExtension(f'Unknown render mode: {mode}')
         args = [INKSTITCH, '--extension=stitch_plan_preview',
-                '--layer-visibility=unchanged', '--render-mode=simple',
+                '--layer-visibility=unchanged', '--render-mode=' + mode,
                 '--move-to-side=' + ('true' if self.options.plan_place == 'side' else 'false'),
                 '--needle-points=false', '--insensitive=false',
                 '--visual-commands=false', '--render-jumps=true',

@@ -14,7 +14,7 @@ Extensions > Map's Edge Tools > Embroidery > Stitch Order
 - **Clear Stitch Order**: takes the number off every object.
 - **List Stitch Order**: shows the numbered objects in order.
 - **Preview in Stitch Order**: opens the Ink/Stitch simulator, sewing in the numbered order.
-- **Stitch Plan Preview**: draws Ink/Stitch's stitch plan, sewn in the numbered order, as a layer in the document, beside the canvas (default) or on top of the design. It replaces an earlier stitch plan; Ink/Stitch's Undo Stitch Plan Preview removes it.
+- **Stitch Plan Preview**: draws Ink/Stitch's stitch plan, sewn in the numbered order, as a layer in the document, beside the canvas (default) or on top of the design, in any of Ink/Stitch's render modes (Realistic View (High Quality) by default). It replaces an earlier stitch plan; Ink/Stitch's Undo Stitch Plan Preview removes it.
 - **Export in Stitch Order**: saves an embroidery file (DST, PES, JEF and the other Ink/Stitch formats) sewn in the numbered order, or an SVG of the document rearranged in that order. If you leave the file name empty, the file goes next to the SVG with the same name; an SVG gets " - stitch order" added to the name, so it never replaces your document.
 
 If you number a group, everything inside it gets that number and sews in its usual order within the group. A number on an object inside the group overrides the group's number.
