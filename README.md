@@ -21,6 +21,10 @@ If you number a group, everything inside it gets that number and sews in its usu
 
 Preview, Stitch Plan Preview and Export sew only the numbered objects. Objects without a number are left out.
 
+## Sections
+
+Numbered objects can be put in named sections, nested as deep as you like, to keep a long stitch order readable. Sections are for you only: sewing ignores them, and the numbers run straight through. Each section is always one unbroken block of the order; an object inserted inside a section joins it. Sections are made, renamed, moved and dissolved in the Stitch Order list of [Expanded Groups](https://github.com/theRoadLessOrdinary/expanded-groups-inkscape) (the Map's Edge Tool Panel's Groups tab). Each object stores its section path as `trlo:stitch_section`. List Stitch Order shows it.
+
 ## How it works
 
 Each number is stored on its object as a `trlo:stitch_order` attribute, and it is saved with the SVG.

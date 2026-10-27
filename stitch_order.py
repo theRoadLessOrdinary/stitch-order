@@ -38,6 +38,10 @@ inkex.NSS['trlo'] = 'http://theroadlessordinary.com/namespace'
 etree.register_namespace('trlo', inkex.NSS['trlo'])
 inkex.NSS.setdefault('inkstitch', 'http://inkstitch.org/namespace')
 ORDER_ATTR = inkex.addNS('stitch_order', 'trlo')
+# The section path of a numbered object, a JSON list of names, outermost
+# first. Sections are named blocks of the one stitch order, for the user's
+# own use; sewing ignores them.
+SECTION_ATTR = inkex.addNS('stitch_section', 'trlo')
 SVG_SUFFIX = ' - stitch order'
 
 # After every change the full order (object ids) is written here, so an open
@@ -49,6 +53,9 @@ ORDER_RECORD_PATH = os.path.join(tempfile.gettempdir(), 'stitch_order_last.json'
 # PENDING_MAX_AGE seconds, so a run that never happened can't apply later.
 ORDER_PENDING_PATH = os.path.join(tempfile.gettempdir(), 'stitch_order_pending.json')
 PENDING_MAX_AGE = 30
+# Expanded Groups' "Add Selection to <section>" names the section here (Add
+# reads it once, if it is fresh), since a quick-run action takes no settings.
+ADD_SECTION_PENDING_PATH = os.path.join(tempfile.gettempdir(), 'stitch_order_add_section.json')
 
 SVG = inkex.NSS['svg']
 EMBROIDERABLE = {f'{{{SVG}}}{t}' for t in
@@ -95,8 +102,65 @@ def tagged_in_order(root):
 
 
 def write_order(nodes):
-    for number, node in enumerate(nodes, start=1):
+    """Number nodes 1..n, after moving them so every section is one block."""
+    for number, node in enumerate(group_sections(nodes), start=1):
         node.set(ORDER_ATTR, str(number))
+
+
+def section_of(node):
+    try:
+        path = json.loads(node.get(SECTION_ATTR) or '[]')
+    except ValueError:
+        return []
+    return [str(s) for s in path] if isinstance(path, list) else []
+
+
+def set_section(node, path):
+    if path:
+        node.set(SECTION_ATTR, json.dumps(list(path)))
+    else:
+        node.attrib.pop(SECTION_ATTR, None)
+
+
+def group_sections(nodes):
+    """The nodes in the same order, except that each section, at every
+    level, is gathered into one unbroken block where it first appears."""
+    def arrange(items, depth):
+        keys, buckets = [], {}
+        for n in items:
+            path = section_of(n)
+            key = ('section', path[depth]) if len(path) > depth else ('node', id(n))
+            if key not in buckets:
+                buckets[key] = []
+                keys.append(key)
+            buckets[key].append(n)
+        out = []
+        for key in keys:
+            out += arrange(buckets[key], depth + 1) if key[0] == 'section' else buckets[key]
+        return out
+    return arrange(list(nodes), 0)
+
+
+def common_prefix(a, b):
+    out = []
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        out.append(x)
+    return out
+
+
+def join_surrounding_sections(order, new):
+    """A new node without a section, placed inside a section (the nodes
+    before and after it share it), joins that section."""
+    new = set(new)
+    for i, node in enumerate(order):
+        if node not in new or section_of(node):
+            continue
+        before = next((n for n in reversed(order[:i]) if n not in new), None)
+        after = next((n for n in order[i + 1:] if n not in new), None)
+        if before is not None and after is not None:
+            set_section(node, common_prefix(section_of(before), section_of(after)))
 
 
 def describe(node):
@@ -282,6 +346,7 @@ class StitchOrder(inkex.EffectExtension):
         pars.add_argument('--format', default='dst')
         pars.add_argument('--output_path', default='')
         pars.add_argument('--sel_order', default='document')
+        pars.add_argument('--section', default='')  # Add: JSON section path to add into
         pars.add_argument('--plan_place', default='side')
         pars.add_argument('--render_mode', default='realistic-600')
 
@@ -301,7 +366,17 @@ class StitchOrder(inkex.EffectExtension):
         root = self.document.getroot()
         if action == 'add':
             sel = self.selected(click_order=self.options.sel_order == 'click')
-            write_order([n for n in tagged_in_order(root) if n not in sel] + sel)
+            rest = [n for n in tagged_in_order(root) if n not in sel]
+            path = self.section_option()
+            if path is None:
+                write_order(rest + sel)
+            else:
+                # Into that section: after its last object, or at the end.
+                for node in sel:
+                    set_section(node, path)
+                last = max((k for k, n in enumerate(rest) if section_of(n)[:len(path)] == path),
+                           default=len(rest) - 1)
+                write_order(rest[:last + 1] + sel + rest[last + 1:])
         elif action == 'insert':
             sel = self.selected()
             rest = [n for n in tagged_in_order(root) if n not in sel]
@@ -311,15 +386,19 @@ class StitchOrder(inkex.EffectExtension):
                 at = len(rest)
             else:
                 at = max(0, min(self.options.position - 1, len(rest)))
-            write_order(rest[:at] + sel + rest[at:])
+            order = rest[:at] + sel + rest[at:]
+            join_surrounding_sections(order, sel)
+            write_order(order)
         elif action == 'remove':
             sel = self.selected()
             for node in sel:
                 node.attrib.pop(ORDER_ATTR, None)
+                node.attrib.pop(SECTION_ATTR, None)
             write_order(tagged_in_order(root))
         elif action == 'clear':
             for node in tagged_in_order(root):
                 node.attrib.pop(ORDER_ATTR, None)
+                node.attrib.pop(SECTION_ATTR, None)
         elif action == 'reorder':
             self.reorder(root)
         elif action == 'list':
@@ -335,6 +414,29 @@ class StitchOrder(inkex.EffectExtension):
         if action in ('add', 'insert', 'remove', 'clear', 'reorder'):
             self.record_order(root)
 
+    def section_option(self):
+        """The section path Add puts the selection into (--section, or the
+        file Expanded Groups leaves), or None for no section."""
+        value = self.options.section
+        if not value:
+            try:
+                with open(ADD_SECTION_PENDING_PATH) as f:
+                    rec = json.load(f)
+                os.remove(ADD_SECTION_PENDING_PATH)
+                if time.time() - rec.get('time', 0) <= PENDING_MAX_AGE:
+                    value = json.dumps(rec.get('section'))
+            except (OSError, ValueError, AttributeError):
+                pass
+        try:
+            path = json.loads(value) if value else None
+        except ValueError:
+            raise inkex.AbortExtension(f'Not a section path: {value}')
+        if path is None:
+            return None
+        if not isinstance(path, list) or not path:
+            raise inkex.AbortExtension(f'Not a section path: {value}')
+        return [str(s) for s in path]
+
     def reorder(self, root):
         """Renumber in the order Expanded Groups left in ORDER_PENDING_PATH.
         Numbered objects missing from that list keep their order, after it."""
@@ -349,6 +451,10 @@ class StitchOrder(inkex.EffectExtension):
         current = tagged_in_order(root)
         by_id = {n.get_id(): n for n in current}
         first = [by_id[i] for i in rec.get('ids', []) if i in by_id]
+        # {id: section path} for the objects whose section changes.
+        for node_id, path in (rec.get('sections') or {}).items():
+            if node_id in by_id and isinstance(path, list):
+                set_section(by_id[node_id], [str(s) for s in path])
         write_order(first + [n for n in current if n not in first])
 
     @staticmethod
@@ -356,9 +462,10 @@ class StitchOrder(inkex.EffectExtension):
         nodes = tagged_in_order(root)
         ids = [n.get_id() for n in nodes]
         labels = {n.get_id(): n.get(LABEL) for n in nodes if n.get(LABEL)}
+        sections = {n.get_id(): section_of(n) for n in nodes if section_of(n)}
         try:
             with open(ORDER_RECORD_PATH, 'w') as f:
-                json.dump({'ids': ids, 'labels': labels, 'time': time.time()}, f)
+                json.dump({'ids': ids, 'labels': labels, 'sections': sections, 'time': time.time()}, f)
         except OSError:
             pass
 
@@ -367,7 +474,7 @@ class StitchOrder(inkex.EffectExtension):
         if not nodes:
             self.msg('No objects have a stitch order yet.')
             return
-        lines = [f'{n.get(ORDER_ATTR)}. {describe(n)}' for n in nodes]
+        lines = [f'{n.get(ORDER_ATTR)}. ' + (' / '.join(section_of(n)) + ': ' if section_of(n) else '') + describe(n) for n in nodes]
         self.msg('Stitch order (objects without a number are not sewn):\n\n'
                  + '\n'.join(lines))
 
