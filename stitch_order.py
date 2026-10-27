@@ -343,6 +343,8 @@ class StitchOrder(inkex.EffectExtension):
         pars.add_argument('--action', default='list')
         pars.add_argument('--place', default='position')
         pars.add_argument('--position', type=int, default=1)
+        # Add: where the selection goes (end, start or position); Insert uses --place.
+        pars.add_argument('--add_place', default='end')
         pars.add_argument('--format', default='dst')
         pars.add_argument('--output_path', default='')
         pars.add_argument('--sel_order', default='document')
@@ -368,15 +370,21 @@ class StitchOrder(inkex.EffectExtension):
             sel = self.selected(click_order=self.options.sel_order == 'click')
             rest = [n for n in tagged_in_order(root) if n not in sel]
             path = self.section_option()
-            if path is None:
-                write_order(rest + sel)
-            else:
+            place = getattr(self, 'place_override', None) or self.options.add_place
+            if path is not None:
                 # Into that section: after its last object, or at the end.
                 for node in sel:
                     set_section(node, path)
                 last = max((k for k, n in enumerate(rest) if section_of(n)[:len(path)] == path),
                            default=len(rest) - 1)
                 write_order(rest[:last + 1] + sel + rest[last + 1:])
+            elif place in ('start', 'position'):
+                at = 0 if place == 'start' else max(0, min(self.options.position - 1, len(rest)))
+                order = rest[:at] + sel + rest[at:]
+                join_surrounding_sections(order, sel)
+                write_order(order)
+            else:
+                write_order(rest + sel)
         elif action == 'insert':
             sel = self.selected()
             rest = [n for n in tagged_in_order(root) if n not in sel]
@@ -425,6 +433,9 @@ class StitchOrder(inkex.EffectExtension):
                 os.remove(ADD_SECTION_PENDING_PATH)
                 if time.time() - rec.get('time', 0) <= PENDING_MAX_AGE:
                     value = json.dumps(rec.get('section'))
+                    # Expanded Groups' plain Add asks for the end, whatever
+                    # the dialog was last set to.
+                    self.place_override = rec.get('place')
             except (OSError, ValueError, AttributeError):
                 pass
         try:
