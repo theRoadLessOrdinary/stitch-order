@@ -14,24 +14,25 @@ Extensions > Map's Edge Tools > Embroidery > Stitch Order
 - **Clear Stitch Order**: takes the number off every object.
 - **List Stitch Order**: shows the numbered objects in order.
 - **Preview in Stitch Order**: opens the Ink/Stitch simulator, sewing in the numbered order.
+- **Stitch Plan Preview**: draws Ink/Stitch's stitch plan, sewn in the numbered order, as a layer in the document, beside the canvas (default) or on top of the design. It replaces an earlier stitch plan; Ink/Stitch's Undo Stitch Plan Preview removes it.
 - **Export in Stitch Order**: saves an embroidery file (DST, PES, JEF and the other Ink/Stitch formats) sewn in the numbered order, or an SVG of the document rearranged in that order. If you leave the file name empty, the file goes next to the SVG with the same name; an SVG gets " - stitch order" added to the name, so it never replaces your document.
 
 If you number a group, everything inside it gets that number and sews in its usual order within the group. A number on an object inside the group overrides the group's number.
 
-Preview and Export sew only the numbered objects. Objects without a number are left out.
+Preview, Stitch Plan Preview and Export sew only the numbered objects. Objects without a number are left out.
 
 ## How it works
 
 Each number is stored on its object as a `trlo:stitch_order` attribute, and it is saved with the SVG.
 
-Preview and Export never change the open document. They build a temporary copy in which every object is taken out of its groups and placed in numbered order. Each object sits inside fresh copies of the groups it came from, with the same transforms, styles and clips, so it stays exactly where it was. Ink/Stitch then runs on that copy.
+Preview and Export never change the open document. They build a temporary copy in which every object is taken out of its groups and placed in numbered order. Each object sits inside fresh copies of the groups it came from, with the same transforms, styles and clips, so it stays exactly where it was. Ink/Stitch then runs on that copy. Stitch Plan Preview is the one action that changes the document: it adds the stitch plan layer Ink/Stitch made from the copy.
 
 Ink/Stitch's own settings carry over to the copy:
 - hidden layers and objects;
 - Ignore Layer and Ignore Object;
 - commands attached to objects, such as Stop and Trim.
 
-Ink/Stitch's own Simulator and Stitch Plan Preview, run from the Ink/Stitch menu, still show the document order. Use Preview in Stitch Order to see the numbered order.
+Ink/Stitch's own Simulator and Stitch Plan Preview, run from the Ink/Stitch menu, still show the document order. Use Preview in Stitch Order or Stitch Plan Preview from this menu to see the numbered order.
 
 ## Install
 

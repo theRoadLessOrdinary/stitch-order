@@ -7,6 +7,8 @@ trlo:stitch_order. Preview and Export build a temporary copy of the
 document with the objects rearranged into that order and hand the copy to
 Ink/Stitch's own simulator or file export. The open document is never
 rearranged.
+Stitch Plan Preview runs Ink/Stitch's Stitch Plan Preview on the same copy
+and puts the stitch plan layer it makes into the open document.
 
 How the copy is built: every object Ink/Stitch would sew is taken out of
 its group and put, in the new order, inside fresh copies of the groups it
@@ -16,8 +18,10 @@ came from the same group share one copy of that group.
 """
 
 import copy
+import io
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -59,6 +63,12 @@ CONN_START = inkex.addNS('connection-start', 'inkscape')
 CONN_END = inkex.addNS('connection-end', 'inkscape')
 GROUPMODE = inkex.addNS('groupmode', 'inkscape')
 LABEL = inkex.addNS('label', 'inkscape')
+
+# Ink/Stitch's stitch plan layer and the attributes it keeps on it.
+PLAN_ID = '__inkstitch_stitch_plan__'
+PLAN_VISIBILITY = inkex.addNS('layer_visibility', 'inkstitch')
+PLAN_INVISIBLE = inkex.addNS('invisible_layers', 'inkstitch')
+URL_REF = re.compile(r'url\(#([^)]+)\)')
 
 
 # -- order tags ---------------------------------------------------------------
@@ -219,6 +229,27 @@ def ordered_copy(document, only_ordered=False):
     return doc, len(order)
 
 
+def reset_stitch_plan(root):
+    """Removes the stitch plan layer the way Ink/Stitch does, including
+    showing layers again that its Hidden or Lower opacity options changed."""
+    layer = root.find(f".//*[@id='{PLAN_ID}']")
+    if layer is None:
+        return
+    method = layer.get(PLAN_VISIBILITY, 'unchanged')
+    invisible = layer.get(PLAN_INVISIBLE, '').split(',')
+    layer.getparent().remove(layer)
+    if method == 'unchanged':
+        return
+    for g in root.iter(f'{{{SVG}}}g'):
+        style = g.specified_style()
+        if (g.get(GROUPMODE) == 'layer' and float(style.get('opacity', 1)) == 0.4
+                or style.get('display', 'inline') == 'none'):
+            if g.get_id() in invisible:
+                continue
+            g.style['opacity'] = 1
+            g.style['display'] = 'inline'
+
+
 def spawn_detached(argv):
     """Start argv fully detached (double fork), so Inkscape does not wait for
     it and this script leaves no child process behind."""
@@ -250,6 +281,7 @@ class StitchOrder(inkex.EffectExtension):
         pars.add_argument('--format', default='dst')
         pars.add_argument('--output_path', default='')
         pars.add_argument('--sel_order', default='document')
+        pars.add_argument('--plan_place', default='side')
 
     def selected(self, click_order=False):
         nodes = [n for n in self.svg.selection.values() if n is not self.svg]
@@ -294,6 +326,8 @@ class StitchOrder(inkex.EffectExtension):
             self.preview()
         elif action == 'export':
             self.export()
+        elif action == 'plan_preview':
+            self.plan_preview()
         else:
             raise inkex.AbortExtension(f'Unknown action: {action}')
         if action in ('add', 'insert', 'remove', 'clear', 'reorder'):
@@ -391,6 +425,85 @@ class StitchOrder(inkex.EffectExtension):
         with open(out, 'wb') as f:
             f.write(result.stdout)
         self.msg(f'Saved {out}')
+
+    def plan_preview(self):
+        """Ink/Stitch's Stitch Plan Preview, run on the ordered copy. Its
+        stitch plan layer is put into this document."""
+        src = os.path.join(tempfile.gettempdir(), 'stitch_order_plan.svg')
+        self.build().write(src)
+        # Ink/Stitch's own defaults, except where the plan goes.
+        args = [INKSTITCH, '--extension=stitch_plan_preview',
+                '--layer-visibility=unchanged', '--render-mode=simple',
+                '--move-to-side=' + ('true' if self.options.plan_place == 'side' else 'false'),
+                '--needle-points=false', '--insensitive=false',
+                '--visual-commands=false', '--render-jumps=true',
+                '--ignore-layer=true', '--overwrite=true', src]
+        try:
+            result = subprocess.run(args, capture_output=True, timeout=1800)
+        except FileNotFoundError:
+            raise inkex.AbortExtension(f'Ink/Stitch was not found at {os.path.normpath(INKSTITCH)}')
+        detail = result.stderr.decode('utf-8', 'replace').strip().splitlines()
+        plan = None
+        if result.returncode == 0 and result.stdout:
+            try:
+                out_root = inkex.load_svg(io.BytesIO(result.stdout)).getroot()
+                plan = out_root.find(f".//*[@id='{PLAN_ID}']")
+            except etree.XMLSyntaxError:
+                plan = None
+        if plan is None:
+            raise inkex.AbortExtension('Ink/Stitch did not make a stitch plan.'
+                                       + (f'\n\n{detail[-1]}' if detail else ''))
+
+        root = self.document.getroot()
+        reset_stitch_plan(root)
+        new = copy.deepcopy(plan)
+        self.fix_ids(root, new)
+        self.copy_defs(out_root, root, new)
+        # Ink/Stitch appends the layer to the root; same here.
+        root.append(new)
+
+    @staticmethod
+    def fix_ids(root, new):
+        """Renames ids in the new layer that the document already uses."""
+        used = {n.get('id') for n in root.iter() if isinstance(n.tag, str)}
+        counter = 0
+        for node in new.iter():
+            if not isinstance(node.tag, str):
+                continue
+            node_id = node.get('id')
+            if node_id is None or node_id == PLAN_ID:
+                continue
+            if node_id in used:
+                while f'{node_id}-sp{counter}' in used:
+                    counter += 1
+                node.set('id', f'{node_id}-sp{counter}')
+            used.add(node.get('id'))
+
+    @staticmethod
+    def copy_defs(src_root, root, new):
+        """Copies defs the layer refers to (like the ignore layer symbol)
+        that the document does not have yet."""
+        refs = set()
+        for node in new.iter():
+            if not isinstance(node.tag, str):
+                continue
+            href = node.get(HREF) or node.get('href') or ''
+            if href.startswith('#'):
+                refs.add(href[1:])
+            for value in node.attrib.values():
+                refs.update(URL_REF.findall(value))
+        have = {n.get('id') for n in root.iter() if isinstance(n.tag, str)}
+        missing = refs - have
+        if not missing:
+            return
+        defs = root.find(f'{{{SVG}}}defs')
+        if defs is None:
+            defs = root.makeelement(f'{{{SVG}}}defs', {})
+            root.insert(0, defs)
+        for ref in missing:
+            found = src_root.find(f".//*[@id='{ref}']")
+            if found is not None:
+                defs.append(copy.deepcopy(found))
 
 
 if __name__ == '__main__':

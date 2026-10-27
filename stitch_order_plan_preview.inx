@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+
+	<name>Stitch Plan Preview</name>
+	<id>maps_edge.stitch_order_plan_preview</id>
+
+	<param name="action" type="string" gui-hidden="true">plan_preview</param>
+	<param name="plan_place" type="optiongroup" appearance="combo" gui-text="Put the stitch plan">
+		<option value="side">Beside the canvas</option>
+		<option value="over">On top of the design</option>
+	</param>
+	<label>Draws Ink/Stitch's stitch plan, sewn in stitch order, as a layer in this document. Objects without a number are left out. Replaces an earlier stitch plan; Ink/Stitch's Undo Stitch Plan Preview removes it.</label>
+	<label>Numbering a group numbers everything inside it; a number on an object inside the group overrides it.</label>
+
+	<effect needs-live-preview="false">
+		<object-type>all</object-type>
+		<effects-menu>
+			<submenu name="Map's Edge Tools" translatable="no">
+				<submenu name="Embroidery" translatable="no">
+					<submenu name="Stitch Order" translatable="no" />
+				</submenu>
+			</submenu>
+		</effects-menu>
+	</effect>
+
+	<script>
+		<command location="inx" interpreter="python">stitch_order.py</command>
+	</script>
+
+</inkscape-extension>
